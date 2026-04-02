@@ -5,52 +5,81 @@ import * as fs from 'fs';
 export function activate(context: vscode.ExtensionContext) {
   const provider = vscode.languages.registerHoverProvider('*', {
     async provideHover(document, position) {
-      // Match quoted paths OR general path-like strings
+      const md = new vscode.MarkdownString();
+      md.isTrusted = true;
+
+      // -------------------------
+      // 1. PATH HOVER (your existing logic)
+      // -------------------------
       const range =
         document.getWordRangeAtPosition(position, /['"`](.*?)['"`]/) ||
         document.getWordRangeAtPosition(position, /[\w\-\/\.@]+/);
 
-      if (!range) return;
+      if (range) {
+        let raw = document.getText(range).replace(/['"`]/g, '');
 
-      let raw = document.getText(range);
-      raw = raw.replace(/['"`]/g, '');
+        const resolved = resolveFilePath(raw, document);
 
-      const resolved = resolveFilePath(raw, document);
-      if (!resolved) return;
+        if (resolved) {
+          const preview = getFilePreview(resolved, 10);
+          const uri = vscode.Uri.file(resolved);
+          const fileName = path.basename(resolved);
 
-      const preview = getFilePreview(resolved, 10);
+          const openCmd = `command:vscode.open?${encodeURIComponent(
+            JSON.stringify([uri.toString()])
+          )}`;
 
-      const md = new vscode.MarkdownString();
-      md.isTrusted = true; // 🔥 REQUIRED for clickable links
+          const splitCmd = `command:vscode.open?${encodeURIComponent(
+            JSON.stringify([uri.toString(), { viewColumn: 2 }])
+          )}`;
 
-      md.appendMarkdown(`[Test](command:workbench.action.files.openFile)\n\n`);
+          md.appendMarkdown(`$(file) **${fileName}**\n\n`);
+          md.appendMarkdown(`[🔗 Open File](${openCmd})\n\n`);
+          md.appendMarkdown(`[🪟 Open in Split](${splitCmd})\n\n`);
+          md.appendMarkdown(`\`${resolved}\`\n\n`);
 
-      const uri = vscode.Uri.file(resolved);
-      const fileName = path.basename(resolved);
-
-      // ✅ FIXED command URIs
-      const openCmd = `command:vscode.open?${encodeURIComponent(
-        JSON.stringify([uri.toString()])
-      )}`;
-
-      const splitCmd = `command:vscode.open?${encodeURIComponent(
-        JSON.stringify([uri.toString(), { viewColumn: 2 }])
-      )}`;
-
-      // 🎨 UI
-      md.appendMarkdown(`$(file) **${fileName}**\n\n`);
-
-      md.appendMarkdown(`[🔗 Open File](${openCmd})\n\n`);
-      md.appendMarkdown(`[🪟 Open in Split](${splitCmd})\n\n`);
-
-      md.appendMarkdown(`\`${resolved}\`\n\n`);
-
-      if (preview) {
-        md.appendMarkdown(`---\n👀 **Preview**\n`);
-        md.appendCodeblock(preview, detectLanguage(resolved));
+          if (preview) {
+            md.appendMarkdown(`---\n👀 **Preview**\n`);
+            md.appendCodeblock(preview, detectLanguage(resolved));
+          }
+        }
       }
 
-      return new vscode.Hover(md, range);
+      // -------------------------
+      // 2. FUNCTION DEFINITION 🔥
+      // -------------------------
+      try {
+        const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+          'vscode.executeDefinitionProvider',
+          document.uri,
+          position
+        );
+
+        if (locations && locations.length > 0) {
+          const loc = locations[0];
+          const filePath = loc.uri.fsPath;
+          const fileName = path.basename(filePath);
+          const line = loc.range.start.line + 1;
+
+          const openCmd = `command:vscode.open?${encodeURIComponent(
+            JSON.stringify([loc.uri.toString()])
+          )}`;
+
+          md.appendMarkdown(`---\n`);
+          md.appendMarkdown(`📍 **Defined In**\n\n`);
+          md.appendMarkdown(`$(symbol-function) **${fileName}**\n\n`);
+          md.appendMarkdown(`[🔗 Open Definition](${openCmd})\n\n`);
+          md.appendMarkdown(`\`${filePath}\`\n\n`);
+          md.appendMarkdown(`📍 Line: ${line}\n\n`);
+        }
+      } catch (err) {
+        // silently ignore errors
+      }
+
+      // If nothing found, don’t show hover
+      if (md.value.trim().length === 0) return;
+
+      return new vscode.Hover(md);
     }
   });
 
