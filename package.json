@@ -1,38 +1,55 @@
 {
   "name": "pathpeek",
   "displayName": "PathPeek",
-  "description": "Hover any file reference to see its full path, preview, and quick open link—all in one place.",
-  "version": "0.0.1",
+  "description": "See full file paths and preview files on hover. Click or Cmd+Click to navigate instantly.",
+  "version": "0.0.2",
+  "author": {
+    "name": "Harshit Srivastava"
+  },
   "engines": {
     "vscode": "^1.110.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Programming Languages"
   ],
-  "activationEvents": [],
+  "keywords": [
+    "path",
+    "hover",
+    "file preview",
+    "navigation",
+    "import",
+    "developer tools"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "icon": "images/logo.png",
   "main": "./dist/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HarshitSrivastava007/pathpeek.git"
+  },
+  "homepage": "https://github.com/HarshitSrivastava007/pathpeek",
+  "bugs": {
+    "url": "https://github.com/HarshitSrivastava007/pathpeek/issues"
+  },
   "contributes": {
     "configuration": {
-    "title": "PathPeek",
-    "properties": {
-      "hoverPath.enabled": {
-        "type": "boolean",
-        "default": true,
-        "description": "Enable PathPeek hover preview"
-      },
-      "hoverPath.previewLines": {
-        "type": "number",
-        "default": 10,
-        "description": "Number of lines to preview"
+      "title": "PathPeek",
+      "properties": {
+        "hoverPath.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable PathPeek hover preview"
+        },
+        "hoverPath.previewLines": {
+          "type": "number",
+          "default": 10,
+          "description": "Number of lines to preview"
+        }
       }
     }
-  },
-  "commands": [
-    {
-      "command": "pathpeek.helloWorld",
-      "title": "Hello World"
-    }
-  ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
