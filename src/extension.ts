@@ -9,7 +9,7 @@ export function activate(context: vscode.ExtensionContext) {
       md.isTrusted = true;
 
       // -------------------------
-      // 1. PATH HOVER (your existing logic)
+      // 1. PATH HOVER
       // -------------------------
       const range =
         document.getWordRangeAtPosition(position, /['"`](.*?)['"`]/) ||
@@ -46,8 +46,10 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       // -------------------------
-      // 2. FUNCTION DEFINITION 🔥
+      // 2. JS/TS DEFINITIONS
       // -------------------------
+      let hasDefinitions = false;
+
       try {
         const locations = await vscode.commands.executeCommand<vscode.Location[]>(
           'vscode.executeDefinitionProvider',
@@ -56,27 +58,99 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         if (locations && locations.length > 0) {
-          const loc = locations[0];
-          const filePath = loc.uri.fsPath;
-          const fileName = path.basename(filePath);
-          const line = loc.range.start.line + 1;
-
-          const openCmd = `command:vscode.open?${encodeURIComponent(
-            JSON.stringify([loc.uri.toString()])
-          )}`;
+          hasDefinitions = true;
 
           md.appendMarkdown(`---\n`);
-          md.appendMarkdown(`📍 **Defined In**\n\n`);
-          md.appendMarkdown(`$(symbol-function) **${fileName}**\n\n`);
-          md.appendMarkdown(`[🔗 Open Definition](${openCmd})\n\n`);
-          md.appendMarkdown(`\`${filePath}\`\n\n`);
-          md.appendMarkdown(`📍 Line: ${line}\n\n`);
+          md.appendMarkdown(`📍 **Definitions:**\n\n`);
+
+          locations.slice(0, 5).forEach((loc) => {
+            const filePath = loc.uri.fsPath;
+            const fileName = path.basename(filePath);
+            const line = loc.range.start.line + 1;
+
+            const openCmd = `command:vscode.open?${encodeURIComponent(
+              JSON.stringify([
+                loc.uri.toString(),
+                { selection: loc.range }
+              ])
+            )}`;
+
+            md.appendMarkdown(
+              `• [${fileName}:${line}](${openCmd}) — \`${filePath}\`\n`
+            );
+          });
+
+          if (locations.length > 5) {
+            md.appendMarkdown(`\n_+${locations.length - 5} more..._\n`);
+          }
         }
-      } catch (err) {
-        // silently ignore errors
+      } catch (err) { }
+
+      // -------------------------
+      // 3. RUBY / RAILS FALLBACK 🔥
+      // -------------------------
+      if (!hasDefinitions && document.languageId === 'ruby') {
+        const wordRange = document.getWordRangeAtPosition(position);
+        if (wordRange) {
+          const word = document.getText(wordRange);
+
+          try {
+            const files = await vscode.workspace.findFiles('**/*.rb');
+
+            const matches: { file: string; line: number }[] = [];
+
+            for (const file of files.slice(0, 50)) { // limit for performance
+              const content = fs.readFileSync(file.fsPath, 'utf-8');
+              const lines = content.split('\n');
+
+              lines.forEach((lineText: any, index: number) => {
+                if (
+                  lineText.includes(`def ${word}`) ||
+                  lineText.includes(`class ${word}`) ||
+                  lineText.includes(`module ${word}`)
+                ) {
+                  matches.push({
+                    file: file.fsPath,
+                    line: index + 1
+                  });
+                }
+              });
+            }
+
+            if (matches.length > 0) {
+              md.appendMarkdown(`---\n`);
+              md.appendMarkdown(`📍 **Rails Definitions:**\n\n`);
+
+              matches.slice(0, 5).forEach((m) => {
+                const uri = vscode.Uri.file(m.file);
+
+                const openCmd = `command:vscode.open?${encodeURIComponent(
+                  JSON.stringify([
+                    uri.toString(),
+                    {
+                      selection: new vscode.Range(
+                        new vscode.Position(m.line - 1, 0),
+                        new vscode.Position(m.line - 1, 0)
+                      )
+                    }
+                  ])
+                )}`;
+
+                const fileName = path.basename(m.file);
+
+                md.appendMarkdown(
+                  `• [${fileName}:${m.line}](${openCmd}) — \`${m.file}\`\n`
+                );
+              });
+
+              if (matches.length > 5) {
+                md.appendMarkdown(`\n_+${matches.length - 5} more..._\n`);
+              }
+            }
+          } catch (err) { }
+        }
       }
 
-      // If nothing found, don’t show hover
       if (md.value.trim().length === 0) return;
 
       return new vscode.Hover(md);
